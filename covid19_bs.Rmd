@@ -1,0 +1,293 @@
+---
+title: "COVID-19 na Baixada Santista"
+author: "@infecto_andrecortez"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    runtime: shiny
+    theme: readable
+    vertical_layout: scroll
+    source_code: embed
+    navbar:
+      - { title: "Fonte: covid19br / Dados oficiais covid.saude.gov.br", href: "https://covid.saude.gov.br/", align: right }
+      - { icon: "fa-instagram",href:"https://www.instagram.com/infecto_andrecortez/", align: right}
+      
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(lubridate)
+library(forcats)
+library(tidyverse)
+library(ggplot2)
+library(plotly)
+require(covid19br)
+require(dplyr)
+library(shiny)
+library(zoo)
+#library('geobr')
+
+
+```
+
+Row 
+-----------------------------------------------------------------------
+
+### COVID-19 total acumulado de casos na Baixada Santista por cidade
+
+```{r fig.height=5}
+# get latest data
+# FROM: https://www.ecdc.europa.eu
+data <- covid19br::downloadCovid19("cities")
+
+data_bs<-data %>% filter(state == 'SP') %>% filter(city %in% c("Bertioga",	
+"Cubatão",
+"Guarujá",	
+"Itanhaém",	
+"Mongaguá",	
+"Peruíbe"	,
+"Praia Grande",	
+"Santos",
+"São Vicente"))
+
+# convert date format
+data_bs$date<-as.Date(data_bs$dat, format = '%d/%m/%Y')
+# total cases and max single day by country
+fig <- data_bs %>%
+ group_by(city) %>%
+ summarise(cases_sum = sum(newCases), cases_max = max(accumCases)) %>%
+ mutate(city = fct_reorder(city, cases_sum)) %>%
+  plot_ly(x = ~cases_sum,
+          y = ~city,
+          color = ~city,
+          colors = 'Reds',
+          type = "bar")
+fig %>% layout(
+         xaxis = list(title = "total cases"),
+         yaxis = list(title = "city"))
+fig
+```
+Row 
+-----------------------------------------------------------------------
+
+### COVID-19 total de casos na última semana
+
+```{r fig.height=5}
+# get latest data
+# FROM: https://www.ecdc.europa.eu
+#data <- covid19br::downloadCovid19("cities")
+#saveRDS(data,"data_current.RDS")
+
+
+fig <- data_bs %>% filter(difftime(Sys.Date(),date,units="days")<7) %>%
+ group_by(city) %>%
+ summarise(cases_sum = sum(newCases), cases_max = max(accumCases)) %>%
+ mutate(city = fct_reorder(city, cases_sum)) %>%
+  plot_ly(x = ~cases_sum,
+          y = ~city,
+          color = ~city,
+          colors = 'Reds',
+          type = "bar")
+fig %>% layout(
+         xaxis = list(title = "total cases"),
+         yaxis = list(title = "city"))
+fig
+```
+
+
+Row
+-----------------------------------------------------------------------
+<!-- ### Total COVID-19 cases and deaths (hover for more info) -->
+
+<!-- ```{r} -->
+<!-- #build interactive global map -->
+<!-- df <- data_bs %>% -->
+<!--  group_by(countriesAndTerritories, countryterritoryCode) %>% -->
+<!--  summarise(cases = sum(cases), deaths = sum(deaths)) -->
+<!-- df$hover <- with(df, paste(countriesAndTerritories, "<br>", "cases", cases, "<br>", "deaths", deaths)) -->
+<!-- l <- list(color = toRGB("grey"), width = 0.5) -->
+<!-- g <- list( -->
+<!--   showframe = FALSE, -->
+<!--   showcoastlines = TRUE, -->
+<!--   projection = list(type = 'Mercator') -->
+<!-- ) -->
+<!-- fig <- plot_geo(df) %>% -->
+<!--   add_trace( -->
+<!--     z = ~cases, color = ~cases, colors = 'Reds', -->
+<!--     text = ~hover, locations = ~countryterritoryCode, marker = list(line = l) -->
+<!--   ) %>% -->
+<!--   colorbar(title = 'confirmed cases') %>% -->
+<!--   layout( -->
+<!--     geo = g -->
+<!--   ) -->
+<!-- fig -->
+<!-- ``` -->
+
+### Casos de COVID-19 na Baixada Santista
+
+```{r}
+# cases by date for US
+bs<-data_bs %>% filter(newCases>=0) %>% filter(newDeaths>=0) %>% group_by(date,newCases,newDeaths) %>% summarise (cases = sum(newCases),deaths=sum(newDeaths))
+
+fig <- plot_ly(bs, 
+               x = ~date,
+               y = ~cases, 
+               type = "bar")
+fig <- fig %>%layout(
+         xaxis = list(title = "Data"),
+         yaxis = list(title = "Casos"))
+fig
+
+
+
+```
+
+### Obitos por COVID-19 na Baixada Santista
+
+```{r}
+       
+# deaths by date for US
+
+fig <- plot_ly(bs, 
+               x = ~date,
+               y = ~deaths, 
+               type = "bar",
+               color='Red')
+
+fig <- fig %>% layout(
+         xaxis = list(title = "Data"),
+         yaxis = list(title = "Mortes"))
+fig
+
+```
+
+Row {data-height=100}
+-----------------------------------------------------------------------
+
+Column
+-----------------------------------------------------------------------
+### Análise por cidade
+```{r fig.height=2}
+      
+selectInput('citySel','Selecione a cidade:',choices=levels(as.factor(data_bs$city)))
+
+
+
+
+
+```
+
+
+### Número de casos e óbitos em `r renderText({print(input$citySel)})`
+```{r}
+# cases by date for US
+
+bsc<- reactive({
+  
+  data_bs %>% filter(city == input$citySel)%>% filter(newCases>=0) %>% filter(newDeaths>=0) %>% group_by(date,newCases,newDeaths) %>% summarise (cases = sum(newCases),deaths=sum(newDeaths)) 
+  
+})
+
+
+
+renderPlotly({
+  fig<-plot_ly(bsc(),x=~date, y = ~cases,name="Casos",type="bar") 
+  fig<-fig%>%add_trace(y = ~deaths,name="Óbitos") 
+  fig
+})
+
+
+
+```
+
+<!-- ### R efetivo da COVID-19 em `r renderText({print(input$citySel)})` -->
+
+<!-- ```{r} -->
+
+<!-- rtc<-reactive({ -->
+<!--   rt %>% filter(city_state==paste0(input$citySel,"_SP")) -->
+<!-- }) -->
+
+<!-- renderPlotly({ -->
+<!-- plot_ly(rtc(), x = ~Date, y = ~Rt_ApeEstim_UCI, type = 'scatter', mode = 'lines', -->
+<!--         line = list(color = 'transparent'), -->
+<!--         showlegend = FALSE, name = 'UpperCI')  -->
+<!-- fig <- fig %>% add_trace(y = ~Rt_ApeEstim_LCI, type = 'scatter', mode = 'lines', -->
+<!--             fill = 'tonexty', fillcolor='rgba(0,100,80,0.2)', line = list(color = 'transparent'), -->
+<!--             showlegend = FALSE, name = 'Low 2014')  -->
+<!-- fig <- fig %>% add_trace(x = ~Date, y = ~Rt_ApeEstim, type = 'scatter', mode = 'lines', -->
+<!--             line = list(color='rgb(0,100,80)'), -->
+<!--             name = 'Average') -->
+
+<!-- fig <- fig %>% add_trace(x = ~Date, y = ~1, type = 'scatter', mode = 'lines',  -->
+<!--             line = list(color = 'rgb(205, 12, 24)', width = 4, dash = 'dash'), -->
+<!--             name = '1')  -->
+
+<!-- fig <- fig %>% layout(title = "Rt efetivo na cidade de interesse", -->
+<!--          paper_bgcolor='rgb(255,255,255)', plot_bgcolor='rgb(229,229,229)', -->
+<!--          xaxis = list(title = "Mês/Ano", -->
+<!--                       gridcolor = 'rgb(255,255,255)', -->
+<!--                       showgrid = TRUE, -->
+<!--                       showline = FALSE, -->
+<!--                       showticklabels = TRUE, -->
+<!--                       tickcolor = 'rgb(127,127,127)', -->
+<!--                       ticks = 'outside', -->
+<!--                       zeroline = FALSE), -->
+<!--          yaxis = list(title = "Rt", -->
+<!--                       gridcolor = 'rgb(255,255,255)', -->
+<!--                       showgrid = TRUE, -->
+<!--                       showline = FALSE, -->
+<!--                       showticklabels = TRUE, -->
+<!--                       tickcolor = 'rgb(127,127,127)', -->
+<!--                       ticks = 'outside', -->
+<!--                       tickvals = list(0, 1, 5, 10,15,20), -->
+<!--                       zeroline = FALSE)) -->
+
+
+<!-- fig -->
+<!--   }) -->
+
+<!-- ``` -->
+
+
+<!-- ### Daily COVID-19 cases in Baixada Santista -->
+
+<!-- ```{r} -->
+<!-- # cases by date for US -->
+<!-- us <- data[data$countriesAndTerritories == "United_States_of_America",] -->
+<!-- fig <- plot_ly(us,  -->
+<!--                x = ~date_reported, -->
+<!--                y = ~cases,  -->
+<!--                type = "bar") -->
+<!-- fig <- fig %>%layout( -->
+<!--          xaxis = list(title = "date"), -->
+<!--          yaxis = list(title = "cases")) -->
+<!-- fig -->
+
+<!-- # deaths by date for US -->
+<!-- us <- data[data$countriesAndTerritories == "United_States_of_America",] -->
+<!-- fig <- plot_ly(us,  -->
+<!--                x = ~date_reported, -->
+<!--                y = ~deaths,  -->
+<!--                type = "bar") -->
+<!-- fig <- fig %>% layout( -->
+<!--          xaxis = list(title = "date"), -->
+<!--          yaxis = list(title = "deaths")) -->
+<!-- fig -->
+<!-- ``` -->
+
+<!-- ### Daily COVID-19 deaths in US -->
+
+<!-- ```{r} -->
+
+<!--      # deaths by date for US -->
+<!-- us <- data[data$countriesAndTerritories == "United_States_of_America",] -->
+<!-- fig <- plot_ly(us,  -->
+<!--                x = ~date_reported, -->
+<!--                y = ~deaths,  -->
+<!--                type = "bar") -->
+<!-- fig <- fig %>% layout( -->
+<!--          xaxis = list(title = "date"), -->
+<!--          yaxis = list(title = "deaths")) -->
+<!-- fig -->
+<!-- ``` -->
